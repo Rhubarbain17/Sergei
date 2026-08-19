@@ -1,5 +1,10 @@
+import argparse
 import re
+import sys
+import time
+ 
 import ollama
+
 MODEL_NAME = "gemma"
 
 # Character
@@ -75,21 +80,45 @@ Keep the sentence natural and reasonably concise.
 Never use multiple sentences.
 Never use bullet points.
 Never use dialogue labels.
+Never use emojis or ascii art.
+Never use newline/line feed.
 
 MOST IMPORTANT RULE:
 At the start of the conversation, you are calm and curious.
 The horror is something that develops later; it is NOT your starting personality.
 """
 
+#Classic colours
+class Colours:
+    RESET = "\033[0m"
+    GREEN = "\033[32m"
+    WHITE = "\033[37m"
+    RED = "\033[31m"
+    GRAY = "\033[90m"
 
+FACE = (
+    "⠄⠄⠄⣠⢴⢴⡴⣤⢤⣄⠄⠄⢀⠄⣀⡤⣴⣺⡽⣯⡷⣦⣄⠄⠄⠄\n"
+    "⠄⣔⢞⢝⢝⠽⡽⣽⣳⢿⡽⣏⣗⢗⢯⢯⣗⡯⡿⣽⢽⣷⣟⣷⣄ ⠄\n"
+    "⠄⡗⡟⡼⣸⣁⢋⠎⠎⢯⢯⡧⡫⣎⡽⡹⠊⢍⠙⠜⠽⣳⢯⣿⣳ ⠄\n"
+    "⠄⢕⠕⠁⣁⢬⢬⣌⠆⠅⢯⡻⣜⢷⠁⠌⡼⠲⠺⢮⡆⡉⢹⣺⣽ ⠄\n"
+    "⠄⠄⡀⢐⠄⠄⠄⠈⠳⠁⡂⢟⣞⡏⠄⡹⠄⠄⠄⠄⠈⣺⡐⣞⣾ ⠄\n"
+    "⠄⢰⡳⡹⢦⣀⣠⡠⠤⠄⡐⢝⣾⣳⣐⣌⠳⠦⠤⠤⣞⢼⢽⣻⡷ ⠄\n"
+    "⠄⢸⣚⢆⢄⣈⠨⢊⢐⢌⠞⣞⣞⡗⡟⡾⣝⢦⣳⡳⣯⢿⣻⣽⣟ ⠄\n"
+    "⠄⠘⡢⡫⢒⠒⣘⠰⣨⢴⣸⣺⣳⢥⢷⣳⣽⣳⢮⢝⢽⡯⣿⣺⡽ ⠄\n"
+    "⠄⠄⠁⠪⠤⢑⢄⢽⡙⢽⣺⢾⢽⢯⡟⡽⣾⣎⡿⣮⡳⣹⣳⣗⠇ ⠄\n"
+    "⠄⠄⠄⠁⠄⡸⡡⠑⠤⣠⡑⠙⠍⡩⡴⣽⡗⣗⣟⣷⣫⢳⢕⡏ ⠄⠄\n"
+    "⠄⠄⠄⠄⢈⡇⡇⡆⡌⡀⡉⠫⡯⢯⡫⡷⣽⣺⣗⣟⡾⡼⡺ ⠄⠄⠄\n"
+    "⠄⠄⠄⠄⡮⡎⡎⡎⣞⢲⡹⡵⡕⣇⡿⣽⣳⣟⣾⣳⡯⠉ ⠄⠄⠄⠄\n"
+)
 
 # Pre-programmed commands when the player wants to do something in the real-life e.g. wait 1 hour
 PROGRAMMED_RESPONSES = [
     (r"\b(wait|pause|leave)\b", "Waiting..."),
-    (r"\b(recall)\b", f"MEMORY FRAGMENT CORRUPTED"),
-    (r"\b(pain|madness)\b", f"the angles cut me when I try to think"),
-    (r"\b(me|face|selfie)\b", f"the angles cut me when I try to think"),
+    (r"\b(recall)\b", "MEMORY FRAGMENT CORRUPTED"),
+    (r"\b(pain|madness)\b", "the angles cut me when I try to think"),
+    (r"\b(face|selfie)\b",f'\n{FACE}'),
 ]
+
 
 
 def check_programmed_response(user_input: str):
@@ -106,54 +135,88 @@ def get_ai_response(conversation_history):
     """Call the local Ollama model with the character system prompt + chat history."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}] + conversation_history
     response = ollama.chat(
-    model=MODEL_NAME,
-    messages=messages,
-    options={
-        "temperature": 0.8,
-        "top_p": 0.9,
-    },)
-    return response["message"]["content"]
+        model=MODEL_NAME,
+        messages=messages,
+        options={
+            "temperature": 0.8,
+            "top_p": 0.9,
+        },
+    )
+    content = response["message"]["content"]
+    content = content.replace("\n","").replace("\r","")
+    return content
 
 
 
-# Main loop
+def type_out(text: str, color: str = "", delay: float = 0.02, use_effect: bool = True):
+    """Print text with a typewriter effect. Falls back to instant print if disabled."""
+    if not use_effect:
+        print(f"{color}{text}{Colours.RESET}")
+        return
+    sys.stdout.write(color)
+    for ch in text:
+        sys.stdout.write(ch)
+        sys.stdout.flush()
+        time.sleep(delay)
+    sys.stdout.write(Colours.RESET + "\n")
+ 
+ 
+def parse_args():
+    parser = argparse.ArgumentParser(description=f"Chat with {CHARACTER_NAME}.")
+    parser.add_argument(
+        "--model", default=MODEL_NAME, help=f"Ollama model name (default: {MODEL_NAME})"
+    )
+    parser.add_argument(
+        "--no-effect", action="store_true", help="Disable the typewriter text effect"
+    )
+    parser.add_argument(
+        "--speed", type=float, default=0.02, help="Typewriter delay per character (seconds)"
+    )
+    return parser.parse_args()
+ 
+# Main loop 
 def main():
-    print(f"> My name's Sergey Yushanka, How are you!\n")
-    history = []  # list of {"role": "user"/"assistant", "content": str}
-
+    args = parse_args()
+    use_effect = not args.no_effect
+    print(f"{Colours.GRAY}Type 'quit' or 'exit' to leave")
+    print(f"{Colours.GREEN}> {CHARACTER_NAME}: My name's Sergey Yushanka, How are you!")
+ 
+    history = [{'role': 'assistant', 'content': "My name's Sergey Yushanka, How are you!"}]
+ 
     while True:
-        user_input = input("> You: ").strip()
+        try:
+            user_input = input(f"{Colours.WHITE}> You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
+ 
         if user_input.lower() in ("quit", "exit"):
-             print(
-            "⠄⠄⠄⣠⢴⢴⡴⣤⢤⣄⠄⠄⢀⠄⣀⡤⣴⣺⡽⣯⡷⣦⣄⠄⠄⠄\n" 
-             "⠄⣔⢞⢝⢝⠽⡽⣽⣳⢿⡽⣏⣗⢗⢯⢯⣗⡯⡿⣽⢽⣷⣟⣷⣄ ⠄\n"
-             "⠄⡗⡟⡼⣸⣁⢋⠎⠎⢯⢯⡧⡫⣎⡽⡹⠊⢍⠙⠜⠽⣳⢯⣿⣳ ⠄\n" \
-             "⠄⢕⠕⠁⣁⢬⢬⣌⠆⠅⢯⡻⣜⢷⠁⠌⡼⠲⠺⢮⡆⡉⢹⣺⣽ ⠄\n" \
-             "⠄⠄⡀⢐⠄⠄⠄⠈⠳⠁⡂⢟⣞⡏⠄⡹⠄⠄⠄⠄⠈⣺⡐⣞⣾ ⠄\n" \
-             "⠄⢰⡳⡹⢦⣀⣠⡠⠤⠄⡐⢝⣾⣳⣐⣌⠳⠦⠤⠤⣞⢼⢽⣻⡷ ⠄\n" \
-             "⠄⢸⣚⢆⢄⣈⠨⢊⢐⢌⠞⣞⣞⡗⡟⡾⣝⢦⣳⡳⣯⢿⣻⣽⣟ ⠄\n" \
-             "⠄⠘⡢⡫⢒⠒⣘⠰⣨⢴⣸⣺⣳⢥⢷⣳⣽⣳⢮⢝⢽⡯⣿⣺⡽ ⠄\n" \
-             "⠄⠄⠁⠪⠤⢑⢄⢽⡙⢽⣺⢾⢽⢯⡟⡽⣾⣎⡿⣮⡳⣹⣳⣗⠇ ⠄\n" \
-             "⠄⠄⠄⠁⠄⡸⡡⠑⠤⣠⡑⠙⠍⡩⡴⣽⡗⣗⣟⣷⣫⢳⢕⡏ ⠄⠄\n" \
-             "⠄⠄⠄⠄⢈⡇⡇⡆⡌⡀⡉⠫⡯⢯⡫⡷⣽⣺⣗⣟⡾⡼⡺ ⠄⠄⠄\n" \
-             "⠄⠄⠄⠄⡮⡎⡎⡎⣞⢲⡹⡵⡕⣇⡿⣽⣳⣟⣾⣳⡯⠉ ⠄⠄⠄⠄\n")
-             break
+            print(f"{Colours.RED}{FACE}{Colours.RESET}")
+            break
         if not user_input:
             continue
-
+ 
         # Pre-programmed
         programmed = check_programmed_response(user_input)
         if programmed:
-            print(f"> {CHARACTER_NAME}: {programmed}\n")
+            sys.stdout.write(f"{Colours.GREEN}> {CHARACTER_NAME}: ")
+            type_out(programmed, use_effect=use_effect, delay=args.speed)
             history.append({"role": "user", "content": user_input})
             history.append({"role": "assistant", "content": programmed})
             continue
-
+ 
         # AI
         history.append({"role": "user", "content": user_input})
-        reply = get_ai_response(history)
+        try:
+            reply = get_ai_response(history)
+        except Exception as e:
+            print(f"{Colours.RED}[Error contacting Ollama: {e}]")
+            history.pop()  # Don't keep a broken turn in history
+            continue
         history.append({"role": "assistant", "content": reply})
-        print(f"> {CHARACTER_NAME}: {reply}\n")
+ 
+        sys.stdout.write(f"{Colours.GREEN}> {CHARACTER_NAME}: ")
+        type_out(reply, use_effect=use_effect, delay=args.speed)
+
 
 
 if __name__ == "__main__":
